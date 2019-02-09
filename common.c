@@ -23,6 +23,95 @@ int delete_peer(peer_t *peer)
     return 0;
 }
 
+char *get_peer_addrstr(peer_t *peer)
+{
+    static char ret[INET_ADDRSTRLEN + 10];
+    char peer_ipv4_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &peer->addr.sin_addr, peer_ipv4_str, INET_ADDRSTRLEN);
+    sprintf(ret, "%s:%d", peer_ipv4_str, peer->addr.sin_port);
+
+    return ret;
+}
+
+int peer_add_to_send(peer_t *peer, msg_t *msg)
+{
+    return enqueue(&peer->send_buf, msg);
+}
+
+/* Receive message from peer and handle it with message_handler(). */
+int receive_from_peer(peer_t *peer, int (*msg_handler)(peer_t *, msg_t *))
+{
+    printf("Receiving from %s.\n", get_peer_addrstr(peer));
+
+    ssize_t received_count;
+    ssize_t received_total = 0;
+    do {
+        // Is completely received?
+        if ((size_t)peer->cur_receiving_byte >= sizeof(peer->receiving_buf)) {
+            msg_handler(peer, &peer->receiving_buf);
+            peer->cur_receiving_byte = 0;
+        }
+
+        // Count bytes to send.
+        size_t len;
+        len = sizeof(peer->receiving_buf) - (size_t)peer->cur_receiving_byte;
+        char *buf = (char *)&peer->receiving_buf + peer->cur_receiving_byte;
+        received_count = recv(peer->sock, buf, len, MSG_DONTWAIT);
+        if (received_count < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else {
+                perror("recv");
+                return -1;
+            }
+        } else if (received_count > 0) {
+            peer->cur_receiving_byte += received_count;
+            received_total += received_count;
+        }
+    } while (received_count > 0);
+
+    printf("Total recv()'ed %zu bytes.\n", received_total);
+    return 0;
+}
+
+int send_to_peer(peer_t *peer)
+{
+    printf("Sending to %s.\n", get_peer_addrstr(peer));
+
+    ssize_t send_count;
+    ssize_t send_total = 0;
+    do {
+        // If sending message has sent and send the next message from queue
+        if (peer->cur_sending_byte < 0 ||
+                (size_t)peer->cur_sending_byte >= sizeof(peer->sending_buf)) {
+            if (dequeue(&peer->send_buf, &peer->sending_buf) != 0) {
+                peer->cur_sending_byte = -1;
+                break;
+            }
+            peer->cur_sending_byte = 0;
+        }
+        // Count bytes to send.
+        size_t len = sizeof(peer->sending_buf) - (size_t)peer->cur_sending_byte;
+        msg_t *buf = &peer->sending_buf + peer->cur_sending_byte;
+        send_count = send(peer->sock, buf, len, 0);
+        if (send_count < 0) {
+            // we have read as many as possible
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else {
+                perror("send");
+                return -1;
+            }
+        } else if (send_count > 0) {
+            peer->cur_sending_byte += send_count;
+            send_total += send_count;
+        }
+    } while (send_count > 0);
+
+    printf("Total sent %zu bytes.\n", send_total);
+    return 0;
+}
+
 void reset_fds(fd_sets_t *fds) {
     FD_ZERO(&fds->r);
     FD_ZERO(&fds->w);

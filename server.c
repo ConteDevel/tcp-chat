@@ -134,6 +134,72 @@ int find_high_socket(peer_t *clients) {
     return high_socket;
 }
 
+int handle_new_connection()
+{
+    struct sockaddr_in client_addr;
+    memset(&client_addr, 0, sizeof(client_addr));
+    socklen_t client_len = sizeof(client_addr);
+    int sock = accept(srv_sock, (struct sockaddr *)&client_addr, &client_len);
+    if (sock < 0) {
+        perror("accept");
+        return -1;
+    }
+
+    char client_ipv4_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &client_addr.sin_addr, client_ipv4_str, INET_ADDRSTRLEN);
+
+    printf("Incoming connection from %s:%d.\n",
+           client_ipv4_str, client_addr.sin_port);
+
+    for (int i = 0; i < MAX_CLIENTS; ++i) {
+        if (clients[i].sock == NO_SOCKET) {
+            clients[i].sock = sock;
+            clients[i].addr = client_addr;
+            clients[i].cur_sending_byte = -1;
+            clients[i].cur_receiving_byte = 0;
+
+            return 0;
+        }
+    }
+    printf("There is too much connections. Close new connection %s:%d.\n",
+           client_ipv4_str, client_addr.sin_port);
+    if (close(sock)) {
+        perror("close");
+    }
+
+    return -1;
+}
+
+int close_connection(peer_t *client)
+{
+    printf("Close client socket for %s.\n", get_peer_addrstr(client));
+
+    if (close(client->sock)) {
+        perror("close");
+        return -1;
+    }
+    client->sock = NO_SOCKET;
+    dequeue_all(&client->send_buf);
+    client->cur_sending_byte = -1;
+    client->cur_receiving_byte = 0;
+
+    return 0;
+}
+
+int handle_msg(peer_t *sender, msg_t *msg)
+{
+    printf("Received message from %s.\n", get_peer_addrstr(sender));
+    print_msg(msg);
+    // Send to all clients but the sender
+    for (int i = 0; i < MAX_CLIENTS; ++i) {
+        if (clients[i].sock != NO_SOCKET && clients[i].sock != sender->sock) {
+            enqueue(&clients[i].send_buf, msg);
+        }
+    }
+
+    return 0;
+}
+
 int main()
 {
     if (setup_signals(handle_signal_action)) {
@@ -152,6 +218,8 @@ int main()
         shutdown_properly(EXIT_FAILURE);
     }
 
+    printf("Waiting for incomming connection...\n");
+
     for (;;) {
         build_fd_sets(&fds, clients);
         int high_socket = find_high_socket(clients);
@@ -164,11 +232,35 @@ int main()
             perror("select");
             shutdown_properly(EXIT_FAILURE);
         default:
+            if (FD_ISSET(srv_sock, &fds.r) && handle_new_connection()) {
+                printf("handle_new_connection\n");
+            }
             if (FD_ISSET(srv_sock, &fds.e)) {
                 printf("Exception for server socket\n");
                 shutdown_properly(EXIT_FAILURE);
             }
-            printf("OK!\n");
+            for (int i = 0; i < MAX_CLIENTS; ++i) {
+                if (clients[i].sock == NO_SOCKET) {
+                    continue;
+                }
+                if (FD_ISSET(clients[i].sock, &fds.r)) {
+                    if (receive_from_peer(&clients[i], &handle_msg) != 0) {
+                        close_connection(&clients[i]);
+                        continue;
+                    }
+                }
+                if (FD_ISSET(clients[i].sock, &fds.w)) {
+                    if (send_to_peer(&clients[i]) != 0) {
+                        close_connection(&clients[i]);
+                        continue;
+                    }
+                }
+                if (FD_ISSET(clients[i].sock, &fds.e)) {
+                    printf("Exception client fd.\n");
+                    close_connection(&clients[i]);
+                    continue;
+                }
+            }
         }
     }
 }

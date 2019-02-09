@@ -4,6 +4,7 @@
 #include "message.h"    /** printf, memset, exit **/
 
 #include <arpa/inet.h>  /** inet_addr **/
+#include <errno.h>      /** errno **/
 #include <fcntl.h>      /** fcntl **/
 #include <netinet/in.h> /** sockaddr_in **/
 #include <signal.h>     /** sigaction **/
@@ -33,6 +34,9 @@ typedef struct {
 
 int create_peer(peer_t *peer);
 int delete_peer(peer_t *peer);
+char *get_peer_addrstr(peer_t *peer);
+int receive_from_peer(peer_t *peer, int (*msg_handler)(peer_t *, msg_t *));
+int send_to_peer(peer_t *peer);
 
 void reset_fds(fd_sets_t *fds);
 
