@@ -3,7 +3,7 @@
 int create_peer(peer_t *peer)
 {
     if (create_msg_queue(MSGBUF_MAXSIZE, &peer->send_buf)) {
-        perror("create_msg_queue");
+        printf("create_msg_queue");
         return -1;
     }
     peer->cur_sending_byte = -1;
@@ -39,10 +39,8 @@ int peer_add_to_send(peer_t *peer, msg_t *msg)
 }
 
 /* Receive message from peer and handle it with message_handler(). */
-int receive_from_peer(peer_t *peer, int (*msg_handler)(peer_t *, msg_t *))
+int receive_from_peer(peer_t *peer, void (*msg_handler)(peer_t *, msg_t *))
 {
-    printf("Receiving from %s.\n", get_peer_addrstr(peer));
-
     ssize_t received_count;
     ssize_t received_total = 0;
     do {
@@ -61,23 +59,22 @@ int receive_from_peer(peer_t *peer, int (*msg_handler)(peer_t *, msg_t *))
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 break;
             } else {
-                perror("recv");
+                perror("recv()");
                 return -1;
             }
+        } else if (received_count == 0) {
+            return -1;
         } else if (received_count > 0) {
             peer->cur_receiving_byte += received_count;
             received_total += received_count;
         }
     } while (received_count > 0);
 
-    printf("Total recv()'ed %zu bytes.\n", received_total);
     return 0;
 }
 
 int send_to_peer(peer_t *peer)
 {
-    printf("Sending to %s.\n", get_peer_addrstr(peer));
-
     ssize_t send_count;
     ssize_t send_total = 0;
     do {
@@ -108,7 +105,6 @@ int send_to_peer(peer_t *peer)
         }
     } while (send_count > 0);
 
-    printf("Total sent %zu bytes.\n", send_total);
     return 0;
 }
 
@@ -131,5 +127,39 @@ int setup_signals(void (*handler)(int))
         perror("sigaction()");
         return -1;
     }
+    return 0;
+}
+
+int read_from_stdin(char *buffer, size_t max_len)
+{
+    memset(buffer, 0, max_len);
+
+    ssize_t cur_count = 0;
+    ssize_t total = 0;
+
+    do {
+        cur_count = read(STDIN_FILENO, buffer, max_len);
+        if (cur_count < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                break;
+            } else {
+                perror("read()");
+                return -1;
+            }
+        } else if (cur_count > 0) {
+            total += cur_count;
+            if (total > (ssize_t)max_len) {
+                printf("Message too large and will be chopped.\n");
+                fflush(STDIN_FILENO);
+                break;
+            }
+        }
+    } while (cur_count > 0);
+
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
+    }
+
     return 0;
 }

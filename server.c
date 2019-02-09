@@ -10,13 +10,13 @@ __attribute__((noreturn)) void shutdown_properly(int code)
 {
     printf("Shuttign down the server...\n");
     if (srv_sock != NO_SOCKET && close(srv_sock)) {
-        perror("close");
+        perror("close()");
         code = EXIT_FAILURE;
     }
 
     for (int i = 0; i < MAX_CLIENTS; ++i) {
         if (delete_peer(&clients[i])) {
-            perror("delete_peer");
+            printf("delete_peer()\n");
             code = EXIT_FAILURE;
         }
     }
@@ -60,12 +60,12 @@ int make_socket(int *sock)
     /* Initialize TCP-socket */
     *sock = socket(AF_INET, SOCK_STREAM, 0);
     if (*sock < 0) {
-        perror("socket");
+        perror("socket()");
         return -1;
     }
     /* Make socket address reusable */
     if (make_address_reusable(*sock)) {
-        perror("make_address_reusable");
+        printf("make_address_reusable()\n");
         return -1;
     }
     /* Setup address */
@@ -75,17 +75,17 @@ int make_socket(int *sock)
     addr.sin_addr.s_addr = inet_addr(SERVER_ADDR);
     addr.sin_port = htons(SERVER_PORT);
     if (addr.sin_addr.s_addr == INADDR_NONE) {
-        perror("inet_addr");
+        perror("inet_addr()");
         return -1;
     }
     /* Bind to this address */
     if (bind(*sock, (struct sockaddr *)&addr, sizeof(struct sockaddr)) != 0) {
-        perror("bind");
+        perror("bind()");
         return -1;
     }
 
     if (listen(*sock, MAX_CLIENTS) != 0) {
-        perror("listen");
+        perror("listen()");
         return -1;
     }
 
@@ -122,7 +122,7 @@ int init_clients(peer_t *clients) {
     for (int i = 0; i < MAX_CLIENTS; ++i) {
         clients[i].sock = NO_SOCKET;
         if (create_peer(&clients[i])) {
-            perror("create_peer");
+            perror("create_peer()");
             return -1;
         }
     }
@@ -147,7 +147,7 @@ int handle_new_connection()
     socklen_t client_len = sizeof(client_addr);
     int sock = accept(srv_sock, (struct sockaddr *)&client_addr, &client_len);
     if (sock < 0) {
-        perror("accept");
+        perror("accept()");
         return -1;
     }
 
@@ -170,7 +170,7 @@ int handle_new_connection()
     printf("There is too much connections. Close new connection %s:%d.\n",
            client_ipv4_str, client_addr.sin_port);
     if (close(sock)) {
-        perror("close");
+        perror("close()");
     }
 
     return -1;
@@ -181,7 +181,7 @@ int close_connection(peer_t *client)
     printf("Close client socket for %s.\n", get_peer_addrstr(client));
 
     if (close(client->sock)) {
-        perror("close");
+        perror("close()");
         return -1;
     }
     client->sock = NO_SOCKET;
@@ -192,18 +192,15 @@ int close_connection(peer_t *client)
     return 0;
 }
 
-int handle_msg(peer_t *sender, msg_t *msg)
+void handle_msg(peer_t *sender, msg_t *msg)
 {
-    printf("Received message from %s.\n", get_peer_addrstr(sender));
     print_msg(msg);
     // Send to all clients but the sender
     for (int i = 0; i < MAX_CLIENTS; ++i) {
-        if (clients[i].sock != NO_SOCKET && clients[i].sock != sender->sock) {
+        if (clients[i].sock != NO_SOCKET && (&clients[i]) != sender) {
             enqueue(&clients[i].send_buf, msg);
         }
     }
-
-    return 0;
 }
 
 int main()
@@ -213,14 +210,14 @@ int main()
         exit(EXIT_FAILURE);
     }
     if (make_socket(&srv_sock)) {
-        printf("make_socket\n");
+        printf("make_socket()\n");
         shutdown_properly(EXIT_FAILURE);
     }
 
     fd_sets_t fds;
 
     if (init_clients(clients)) {
-        printf("init_clients\n");
+        printf("init_clients()\n");
         shutdown_properly(EXIT_FAILURE);
     }
 
@@ -235,7 +232,7 @@ int main()
         switch (activity) {
         case -1:
         case 0:
-            perror("select");
+            perror("select()");
             shutdown_properly(EXIT_FAILURE);
         default:
             if (FD_ISSET(srv_sock, &fds.r) && handle_new_connection()) {

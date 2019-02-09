@@ -7,10 +7,9 @@ int prepare_msg(char *sender, char *data, msg_t *msg)
     return 0;
 }
 
-int print_msg(msg_t *msg)
+void print_msg(msg_t *msg)
 {
-    printf("Message: \"%s: %s\"\n", msg->sender, msg->data);
-    return 0;
+    printf("%s: %s\n", msg->sender, msg->data);
 }
 
 int create_msg_queue(size_t queue_size, msg_queue_t *queue)

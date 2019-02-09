@@ -35,11 +35,14 @@ typedef struct {
 int create_peer(peer_t *peer);
 int delete_peer(peer_t *peer);
 char *get_peer_addrstr(peer_t *peer);
-int receive_from_peer(peer_t *peer, int (*msg_handler)(peer_t *, msg_t *));
+int peer_add_to_send(peer_t *peer, msg_t *msg);
+int receive_from_peer(peer_t *peer, void (*msg_handler)(peer_t *, msg_t *));
 int send_to_peer(peer_t *peer);
 
 void reset_fds(fd_sets_t *fds);
 
 int setup_signals(void (*handler)(int));
+
+int read_from_stdin(char *buffer, size_t max_len);
 
 #endif //COMMON_H
