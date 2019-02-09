@@ -83,6 +83,12 @@ int make_socket(int *sock)
         perror("bind");
         return -1;
     }
+
+    if (listen(*sock, MAX_CLIENTS) != 0) {
+        perror("listen");
+        return -1;
+    }
+
     return 0;
 }
 

@@ -12,7 +12,7 @@
 #include <unistd.h>     /** close **/
 
 #define SERVER_ADDR "127.0.0.1"
-#define SERVER_PORT 5555
+#define SERVER_PORT 15555
 
 #define NO_SOCKET -1
 
